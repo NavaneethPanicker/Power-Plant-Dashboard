@@ -9,8 +9,7 @@ import numpy as np
 # ─────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    df = pd.read_csv(r"global_power_plant_database.csv")
-    return df
+    return pd.read_parquet('globalpowerplantdata.parquet')
 
 df = load_data()
 df.columns = df.columns.str.strip()
@@ -23,7 +22,7 @@ total_plants = len(df)
 st.sidebar.header("Filters")
 
 # Country
-country_list = sorted(df["country_long"].dropna().unique().tolist())
+country_list = sorted(df["country_long"].dropna().unique())
 select_all_country = st.sidebar.checkbox("Select All Countries")
 selected_country = st.sidebar.multiselect(
     "Select Country",
@@ -32,7 +31,7 @@ selected_country = st.sidebar.multiselect(
 )
 
 # Primary Fuel
-primary_fuel_list = sorted(df["primary_fuel"].dropna().unique().tolist())
+primary_fuel_list = sorted(df["primary_fuel"].dropna().unique())
 select_all_primary = st.sidebar.checkbox("Select All Primary Fuels")
 selected_primary = st.sidebar.multiselect(
     "Primary Fuel",
@@ -41,8 +40,8 @@ selected_primary = st.sidebar.multiselect(
 )
 
 # Other Fuel 1
-other1_list = sorted(df["other_fuel1"].fillna("NaN").unique().tolist())
-select_all_other1 = st.sidebar.checkbox("Select All Other_Fuel_1")
+other1_list = sorted(df["other_fuel1"].fillna("NaN").unique())
+select_all_other1 = st.sidebar.checkbox("Select All Other Fuel 1")
 selected_other1 = st.sidebar.multiselect(
     "Other Fuel 1",
     other1_list,
@@ -50,8 +49,8 @@ selected_other1 = st.sidebar.multiselect(
 )
 
 # Other Fuel 2
-other2_list = sorted(df["other_fuel2"].fillna("NaN").unique().tolist())
-select_all_other2 = st.sidebar.checkbox("Select All Other_Fuel_2")
+other2_list = sorted(df["other_fuel2"].fillna("NaN").unique())
+select_all_other2 = st.sidebar.checkbox("Select All Other Fuel 2")
 selected_other2 = st.sidebar.multiselect(
     "Other Fuel 2",
     other2_list,
@@ -59,8 +58,8 @@ selected_other2 = st.sidebar.multiselect(
 )
 
 # Other Fuel 3
-other3_list = sorted(df["other_fuel3"].fillna("NaN").unique().tolist())
-select_all_other3 = st.sidebar.checkbox("Select All Other_Fuel_3")
+other3_list = sorted(df["other_fuel3"].fillna("NaN").unique())
+select_all_other3 = st.sidebar.checkbox("Select All Other Fuel 3")
 selected_other3 = st.sidebar.multiselect(
     "Other Fuel 3",
     other3_list,
@@ -71,11 +70,11 @@ selected_other3 = st.sidebar.multiselect(
 # 3. FILTER CHECK
 # ─────────────────────────────────────────────
 no_filter_selected = (
-    len(selected_country) == 0 and
-    len(selected_primary) == 0 and
-    len(selected_other1) == 0 and
-    len(selected_other2) == 0 and
-    len(selected_other3) == 0
+    not selected_country and
+    not selected_primary and
+    not selected_other1 and
+    not selected_other2 and
+    not selected_other3
 )
 
 # ─────────────────────────────────────────────
@@ -84,7 +83,7 @@ no_filter_selected = (
 st.title("🌍 Global Power Plants Dashboard")
 
 # ─────────────────────────────────────────────
-# 5. DATA PREPARATION
+# 5. DATA FILTERING
 # ─────────────────────────────────────────────
 filtered_df = df.copy()
 
@@ -96,7 +95,6 @@ if not no_filter_selected:
     if selected_primary:
         filtered_df = filtered_df[filtered_df["primary_fuel"].isin(selected_primary)]
 
-    # Other Fuel 1
     if selected_other1:
         mask = pd.Series(False, index=filtered_df.index)
         if "NaN" in selected_other1:
@@ -104,7 +102,6 @@ if not no_filter_selected:
         mask |= filtered_df["other_fuel1"].isin([x for x in selected_other1 if x != "NaN"])
         filtered_df = filtered_df[mask]
 
-    # Other Fuel 2
     if selected_other2:
         mask = pd.Series(False, index=filtered_df.index)
         if "NaN" in selected_other2:
@@ -112,7 +109,6 @@ if not no_filter_selected:
         mask |= filtered_df["other_fuel2"].isin([x for x in selected_other2 if x != "NaN"])
         filtered_df = filtered_df[mask]
 
-    # Other Fuel 3
     if selected_other3:
         mask = pd.Series(False, index=filtered_df.index)
         if "NaN" in selected_other3:
@@ -126,7 +122,7 @@ filtered_df = filtered_df[filtered_df["capacity_mw"] > 0]
 filtered_df["cap_scaled"] = np.sqrt(filtered_df["capacity_mw"])
 
 # ─────────────────────────────────────────────
-# 6. MAP
+# 6. MAP (FIXED HOVER)
 # ─────────────────────────────────────────────
 if len(filtered_df) == 0:
     st.warning("No data matches the selected filters.")
@@ -137,20 +133,16 @@ else:
         lon="longitude",
         color="primary_fuel",
         size="cap_scaled",
-        size_max=18
-    )
-
-    fig.update_traces(
-        text=filtered_df["name"],
-        customdata=filtered_df[["country_long", "primary_fuel"]],
-        hovertemplate=(
-            "<b>%{text}</b><br>"
-            "Country: %{customdata[0]}<br>"
-            "Fuel: %{customdata[1]}<br>"
-            "Latitude: %{lat:.3f}<br>"
-            "Longitude: %{lon:.3f}<br>"
-            "<extra></extra>"
-        )
+        size_max=18,
+        hover_name="name",
+        hover_data={
+            "country_long": True,   # rename
+            "primary_fuel": True,      # rename
+            "capacity_mw": ":,.0f",
+            "latitude": ":.3f",          # keep visible
+            "longitude": ":.3f",         # keep visible
+            "cap_scaled": False          # remove from hover
+        }
     )
 
     fig.update_layout(
@@ -165,11 +157,7 @@ else:
 # ─────────────────────────────────────────────
 st.subheader("Power Plant Statistics")
 
-if no_filter_selected:
-    filtered_count = 0
-else:
-    filtered_count = len(filtered_df)
-
+filtered_count = 0 if no_filter_selected else len(filtered_df)
 percentage = (filtered_count / total_plants * 100) if total_plants > 0 else 0
 
 col1, col2, col3 = st.columns(3)
